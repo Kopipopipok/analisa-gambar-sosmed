@@ -3,6 +3,7 @@ from PIL import Image, ImageStat
 import numpy as np
 import requests
 import base64
+import io
 
 st.set_page_config(page_title="Analisa Gambar Sosmed", layout="centered")
 
@@ -27,7 +28,7 @@ def get_contrast_score(img):
     return contrast
 
 def extract_text_ocr_space(image: Image.Image) -> str:
-    buffered = st.BytesIO()
+    buffered = io.BytesIO()  # ← diubah dari st.BytesIO()
     image.save(buffered, format="JPEG")
     img_base64 = base64.b64encode(buffered.getvalue()).decode()
 
