@@ -1,8 +1,7 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageStat
 import pytesseract
 import numpy as np
-import cv2
 
 st.set_page_config(page_title="Analisa Gambar Sosmed", layout="centered")
 
@@ -10,17 +9,17 @@ st.title("📊 Analisa Gambar untuk Postingan Sosial Media")
 
 uploaded_file = st.file_uploader("Unggah gambar postingan (JPEG/PNG)", type=["jpg", "jpeg", "png"])
 
-def get_dominant_color(img, k=4):
-    img = img.resize((100, 100))
-    arr = np.array(img)
-    arr = arr.reshape((-1, 3))
-    arr = arr[np.random.choice(arr.shape[0], 1000, replace=True)]
-    colors, _ = np.unique(arr, axis=0, return_counts=True)
-    return colors[0]
+def get_dominant_color(img):
+    img = img.resize((100, 100))  # resize for faster processing
+    pixels = np.array(img).reshape(-1, 3)
+    unique, counts = np.unique(pixels, axis=0, return_counts=True)
+    dominant = unique[np.argmax(counts)]
+    return dominant
 
 def get_contrast_score(img):
-    gray = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
-    contrast = gray.std()
+    gray_img = img.convert("L")  # convert to grayscale
+    stat = ImageStat.Stat(gray_img)
+    contrast = stat.stddev[0]
     return contrast
 
 def extract_text(img):
@@ -43,13 +42,13 @@ if uploaded_file:
         cta_found = check_cta(text_content)
 
         st.subheader("📋 Hasil Analisis")
-        st.markdown(f"**Kontras Gambar**: {contrast:.2f} → {'✅ Baik' if contrast > 40 else '⚠️ Rendah'}")
+        st.markdown(f"**Kontras Gambar**: {contrast:.2f} → {'✅ Baik' if contrast > 20 else '⚠️ Rendah'}")
         st.markdown(f"**Teks Terdeteksi**: {text_content[:100]}{'...' if len(text_content) > 100 else ''}")
         st.markdown(f"**CTA Ditemukan**: {', '.join(cta_found) if cta_found else '❌ Tidak ditemukan'}")
         st.markdown(f"**Warna Dominan**: RGB {tuple(dominant_color)}")
 
         st.subheader("🧠 Rekomendasi")
-        if contrast < 40:
+        if contrast < 20:
             st.warning("Tingkat kontras rendah. Tingkatkan keterbacaan teks.")
         if not cta_found:
             st.info("Tidak ditemukan CTA. Tambahkan ajakan seperti 'Klik Sekarang', 'Beli', atau 'Scan'.")
