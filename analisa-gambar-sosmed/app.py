@@ -56,7 +56,7 @@ def check_cta(text):
 
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Gambar yang diunggah", use_column_width=True)
+    st.image(image, caption="Gambar yang diunggah", use_container_width=True)
 
     with st.spinner("🔍 Menganalisis gambar..."):
         dominant_color = get_dominant_color(image)
