@@ -1,119 +1,121 @@
 import streamlit as st
-from PIL import Image, ImageStat
+from PIL import Image, ImageStat, ImageFilter
 import numpy as np
 import requests
 import base64
 import io
 
-st.set_page_config(page_title="Analisa Gambar Sosmed", layout="centered")
+# --- Konfigurasi Streamlit ---
+st.set_page_config(page_title="Visual Image Analyzer", layout="centered")
+st.title("🖼️ Image Feature Analysis for Social Media")
 
-# MASUKKAN API KEY KAMU DI SINI 👇
-OCR_API_KEY = "K85290270188957"
+# --- Masukkan API Key OCR.Space ---
+OCR_API_KEY = "K85290270188957"  # Ganti dengan API key kamu
 
-st.title("📊 Analisa Gambar untuk Postingan Sosial Media")
+# --- Upload Gambar ---
+uploaded_file = st.file_uploader("Unggah gambar untuk analisa", type=["jpg", "jpeg", "png"])
 
-uploaded_file = st.file_uploader("Unggah gambar postingan (JPEG/PNG)", type=["jpg", "jpeg", "png"])
+# --- Fungsi-fungsi analisis gambar ---
+def get_color_diversity(img):
+    img_small = img.resize((64, 64))
+    pixels = np.array(img_small).reshape(-1, 3)
+    unique_colors = np.unique(pixels, axis=0).shape[0]
+    return round(unique_colors / 4096, 4)  # Normalisasi (64*64 = 4096)
 
-def get_dominant_color(img):
-    img = img.resize((100, 100))
-    pixels = np.array(img).reshape(-1, 3)
-    unique, counts = np.unique(pixels, axis=0, return_counts=True)
-    dominant = unique[np.argmax(counts)]
-    return dominant
+def get_brightness(img):
+    stat = ImageStat.Stat(img)
+    r, g, b = stat.mean
+    return round((r + g + b) / 3, 2)
 
-def get_contrast_score(img):
-    gray_img = img.convert("L")
-    stat = ImageStat.Stat(gray_img)
-    contrast = stat.stddev[0]
-    return contrast
+def get_saturation(img):
+    hsv = img.convert("HSV")
+    h, s, v = hsv.split()
+    return round(np.array(s).mean(), 2)
 
-def extract_text_ocr_space(image: Image.Image) -> str:
-    buffered = io.BytesIO()  # ← diubah dari st.BytesIO()
+def get_edge_complexity(img):
+    edges = img.convert("L").filter(ImageFilter.FIND_EDGES)
+    arr = np.array(edges)
+    return round(np.mean(arr) / 10, 4)
+
+def get_whitespace_ratio(img):
+    gray = img.convert("L")
+    arr = np.array(gray)
+    white_pixels = np.sum(arr > 245)
+    total_pixels = arr.size
+    return round(white_pixels / total_pixels, 4)
+
+def extract_text_ocr_space(image):
+    buffered = io.BytesIO()
     image.save(buffered, format="JPEG")
     img_base64 = base64.b64encode(buffered.getvalue()).decode()
 
     url = "https://api.ocr.space/parse/image"
-    headers = {
-        'apikey': OCR_API_KEY,
-    }
+    headers = {'apikey': OCR_API_KEY}
     data = {
         'base64Image': f'data:image/jpeg;base64,{img_base64}',
-        'language': 'ind',
-        'isOverlayRequired': False,
+        'language': 'eng',
+        'isOverlayRequired': True
     }
     response = requests.post(url, data=data, headers=headers)
     result = response.json()
-
     try:
-        return result['ParsedResults'][0]['ParsedText']
+        parsed = result['ParsedResults'][0]
+        text = parsed['ParsedText']
+        boxes = parsed.get('TextOverlay', {}).get('Lines', [])
+        text_areas = [box['Words'][0]['Height'] * box['Words'][0]['Width'] for box in boxes if box['Words']]
+        avg_text_area = np.mean(text_areas) if text_areas else 0
+        text_density = sum(text_areas) / (image.size[0] * image.size[1]) if text_areas else 0
+        return text, round(avg_text_area, 4), round(text_density, 8)
     except:
-        return ""
+        return "", 0, 0
 
-def check_cta(text):
-    cta_keywords = ["beli", "klik", "scan", "pesan", "hubungi", "diskon", "gratis"]
-    found = [word for word in cta_keywords if word in text.lower()]
-    return found
+def generate_insight(color_div, edge_complex):
+    insights = []
+    if color_div > 0.7:
+        insights.append("✅ This image has great color diversity")
+    if edge_complex > 7:
+        insights.append("✅ High visual detail and edge complexity")
+    if not insights:
+        insights.append("ℹ️ Consider using more color variation and sharpness")
+    return insights
 
-def calculate_simplicity(img, text):
-    small_img = img.resize((50, 50))
-    pixels = np.array(small_img).reshape(-1, 3)
-    unique_colors = np.unique(pixels, axis=0).shape[0]
-    color_score = 1 - min(unique_colors / 256, 1)  # makin banyak warna, makin kompleks
-    text_score = 1 - min(len(text) / 200, 1)       # makin panjang teks, makin kompleks
-    return round((color_score + text_score) / 2, 2)  # rata-rata
-
-def estimate_engagement(cta_found, contrast, dominant_color):
-    score = 0
-    if cta_found:
-        score += 1
-    if contrast > 30:
-        score += 1
-    if dominant_color[0] > 150:  # warna dominan merah
-        score += 1
-    return round(score / 3, 2)
-
-def calculate_complexity(img):
-    gray = img.convert("L")
-    histogram = gray.histogram()
-    histogram = np.array(histogram) / sum(histogram)
-    entropy = -np.sum(histogram * np.log2(histogram + 1e-6))
-    return round(entropy / 8, 2)  # skala 0–1
-
+# --- Logika utama ---
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Gambar yang diunggah", use_container_width=True)
+    st.image(image, caption="📷 Gambar yang diunggah", use_container_width=True)
 
     with st.spinner("🔍 Menganalisis gambar..."):
-        dominant_color = get_dominant_color(image)
-        contrast = get_contrast_score(image)
-        text_content = extract_text_ocr_space(image)
-        cta_found = check_cta(text_content)
+        color_div = get_color_diversity(image)
+        brightness = get_brightness(image)
+        saturation = get_saturation(image)
+        edge_complex = get_edge_complexity(image)
+        whitespace = get_whitespace_ratio(image)
+        text_content, avg_text_area, text_density = extract_text_ocr_space(image)
+        insights = generate_insight(color_div, edge_complex)
 
-        st.subheader("📋 Hasil Analisis")
-        st.markdown(f"**Kontras Gambar**: {contrast:.2f} → {'✅ Baik' if contrast > 20 else '⚠️ Rendah'}")
-        st.markdown(f"**Teks Terdeteksi**: {text_content[:100]}{'...' if len(text_content) > 100 else ''}")
-        st.markdown(f"**CTA Ditemukan**: {', '.join(cta_found) if cta_found else '❌ Tidak ditemukan'}")
-        st.markdown(f"**Warna Dominan**: RGB {tuple(dominant_color)}")
-        st.subheader("📊 Skor Visual Lanjutan")
-        st.markdown(f"**Simplicity**: {simplicity} (1 = sangat sederhana)")
-        st.markdown(f"**Complexity**: {complexity} (1 = sangat kompleks)")
-        st.markdown(f"**Prediksi Engagement**: {engagement} (0–1)")
+    # --- Tampilkan hasil ---
+    st.markdown("### Feature Analysis")
+    st.markdown(f"**Color Diversity:** {color_div}  ")
+    st.caption("Measures the variety of colors in the image. Higher values indicate a more diverse color palette.")
 
-        if simplicity < 0.4:
-            st.info("Desain cukup kompleks. Pertimbangkan menyederhanakan elemen visual.")
-        if engagement > 0.7:
-            st.success("Gambar ini berpotensi mendapat engagement tinggi.")
+    st.markdown(f"**Avg Text Area:** {avg_text_area}  ")
+    st.caption("Represents the average size of text regions detected in the image. Larger values suggest bigger text areas.")
 
-        st.subheader("🧠 Rekomendasi")
-        
-        if contrast < 20:
-            st.warning("Tingkat kontras rendah. Tingkatkan keterbacaan teks.")
-        if not cta_found:
-            st.info("Tidak ditemukan CTA. Tambahkan ajakan seperti 'Klik Sekarang', 'Beli', atau 'Scan'.")
-        else:
-            st.success("CTA ditemukan. Bagus!")
-        simplicity = calculate_simplicity(image, text_content)
-        engagement = estimate_engagement(cta_found, contrast, dominant_color)
-        complexity = calculate_complexity(image)
+    st.markdown(f"**Text Density:** {text_density}  ")
+    st.caption("Indicates the proportion of text regions relative to the total image area. Higher values suggest text-heavy images.")
 
-        
+    st.markdown(f"**Whitespace Ratio:** {whitespace}  ")
+    st.caption("Measures the proportion of white or blank space in the image. Higher values indicate more whitespace.")
+
+    st.markdown(f"**Edge Complexity:** {edge_complex}  ")
+    st.caption("Quantifies the density of edges in the image, representing visual complexity.")
+
+    st.markdown(f"**Brightness:** {brightness}  ")
+    st.caption("Represents the average brightness level of the image. Higher values indicate brighter images.")
+
+    st.markdown(f"**Saturation:** {saturation}  ")
+    st.caption("Measures the intensity of colors in the image. Higher values suggest more vibrant and saturated colors.")
+
+    st.markdown("### Key Insights")
+    for line in insights:
+        st.success(line) if "✅" in line else st.info(line)
