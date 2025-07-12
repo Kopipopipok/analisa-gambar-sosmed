@@ -17,7 +17,7 @@ uploaded_file = st.file_uploader("Unggah gambar untuk analisa", type=["jpg", "jp
 
 # --- Fungsi-fungsi analisis gambar ---
 def get_color_diversity(img):
-    img_small = img.resize((64, 64))
+    img_small = img.resize((128, 128))
     pixels = np.array(img_small).reshape(-1, 3)
     unique_colors = np.unique(pixels, axis=0).shape[0]
     return round(unique_colors / 4096, 4)  # Normalisasi (64*64 = 4096)
