@@ -1,124 +1,101 @@
 import streamlit as st
-from PIL import Image, ImageStat, ImageFilter
 import numpy as np
+from PIL import Image
+import cv2
 import requests
-import base64
-import io
+from sklearn.cluster import KMeans
+from skimage.metrics import structural_similarity as ssim
 
-# --- Konfigurasi Streamlit ---
-st.set_page_config(page_title="Visual Image Analyzer", layout="centered")
-st.title("🖼️ Image Feature Analysis for Social Media")
+st.set_page_config(page_title="Gambar Sosmed Analyzer", layout="centered")
+st.title("📊 Sosial Media Analyzer")
 
-# --- Masukkan API Key OCR.Space ---
-OCR_API_KEY = "K85290270188957"  # Ganti dengan API key kamu
+uploaded_file = st.file_uploader("Unggah gambar", type=["png", "jpg", "jpeg"])
 
-# --- Upload Gambar ---
-uploaded_file = st.file_uploader("Unggah gambar untuk analisa", type=["jpg", "jpeg", "png"])
+def additional_metrics(img_pil):
+    analysis = {}
+    img = np.array(img_pil)
+    img_resized = cv2.resize(img, (300, 300))
+    gray = cv2.cvtColor(img_resized, cv2.COLOR_RGB2GRAY)
 
-# --- Fungsi-fungsi analisis gambar ---
-def get_color_diversity(img):
-    img_small = img.resize((64, 64))
-    pixels = np.array(img_small).reshape(-1, 3)
-    unique_colors = np.unique(pixels, axis=0).shape[0]
-    return round(unique_colors / 4096, 4)  # Normalisasi (64*64 = 4096)
+    # 1. Color Spectrum
+    pixels = img_resized.reshape((-1, 3))
+    kmeans = KMeans(n_clusters=5, n_init=10).fit(pixels)
+    analysis["Color Spectrum"] = len(np.unique(kmeans.labels_))
 
-def get_brightness(img):
-    stat = ImageStat.Stat(img)
-    r, g, b = stat.mean
-    return round((r + g + b) / 3, 2)
+    # 2. Luminance
+    luminance = np.mean(0.2126 * img_resized[:, :, 0] + 0.7152 * img_resized[:, :, 1] + 0.0722 * img_resized[:, :, 2])
+    analysis["Luminance"] = round(luminance, 2)
 
-def get_saturation(img):
-    hsv = img.convert("HSV")
-    h, s, v = hsv.split()
-    return round(np.array(s).mean(), 2)
+    # 3. Object Count
+    _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    analysis["Object Count"] = len(contours)
 
-def get_edge_complexity(img):
-    edges = img.convert("L").filter(ImageFilter.FIND_EDGES)
-    arr = np.array(edges)
-    return round(np.mean(arr) / 10, 4)
+    # 4. Object Regularity
+    areas = [cv2.contourArea(cnt) for cnt in contours if cv2.contourArea(cnt) > 50]
+    if len(areas) > 1:
+        analysis["Object Regularity"] = round(np.std(areas), 2)
+    else:
+        analysis["Object Regularity"] = "N/A"
 
-def get_whitespace_ratio(img):
-    gray = img.convert("L")
-    arr = np.array(gray)
-    white_pixels = np.sum(arr > 245)
-    total_pixels = arr.size
-    return round(white_pixels / total_pixels, 4)
+    # 5. Symmetry
+    h, w = gray.shape
+    left = gray[:, :w // 2]
+    right = cv2.flip(gray[:, w - w // 2:], 1)
+    min_shape = min(left.shape[1], right.shape[1])
+    score = ssim(left[:, :min_shape], right[:, :min_shape])
+    analysis["Symmetry"] = round(score, 3)
 
-def extract_text_ocr_space(image):
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG")
-    img_base64 = base64.b64encode(buffered.getvalue()).decode()
+    return analysis
 
-    url = "https://api.ocr.space/parse/image"
-    headers = {'apikey': OCR_API_KEY}
-    data = {
-        'base64Image': f'data:image/jpeg;base64,{img_base64}',
-        'language': 'eng',
-        'isOverlayRequired': True
-    }
-    response = requests.post(url, data=data, headers=headers)
-    result = response.json()
+def extract_text_ocr_space(img_pil):
+    buffered = cv2.imencode(".jpg", np.array(img_pil))[1].tobytes()
+    response = requests.post(
+        "https://api.ocr.space/parse/image",
+        data={"apikey": "K85290270188957"},
+        files={"filename": buffered},
+    )
     try:
-        parsed = result['ParsedResults'][0]
-        text = parsed['ParsedText']
-        boxes = parsed.get('TextOverlay', {}).get('Lines', [])
-        text_areas = [box['Words'][0]['Height'] * box['Words'][0]['Width'] for box in boxes if box['Words']]
-        avg_text_area = np.mean(text_areas) if text_areas else 0
-        text_density = sum(text_areas) / (image.size[0] * image.size[1]) if text_areas else 0
-        return text, round(avg_text_area, 4), round(text_density, 8)
+        text = response.json()["ParsedResults"][0]["ParsedText"]
+        return text
     except:
-        return "", 0, 0
+        return ""
 
-def generate_insight(color_div, edge_complex):
+def extract_text_insights(text):
+    lines = text.split("\n")
     insights = []
-    if color_div > 0.9:
-        insights.append("✅ This image has great color diversity")
-    if edge_complex < 9.0:
-        insights.append("✅ High visual detail and edge complexity")
-    if not insights:
-        insights.append("ℹ️ Consider using more color variation and sharpness")
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if len(line) < 5:
+            continue
+        if any(word in line.lower() for word in ["diskon", "gratis", "sekarang", "%", "promo"]):
+            insights.append(f"✅ Call-to-Action ditemukan: '{line}'")
+        else:
+            insights.append(f"ℹ️ Teks umum: '{line}'")
     return insights
 
-# --- Logika utama ---
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="📷 Gambar yang diunggah", use_container_width=True)
+    st.image(image, caption="Gambar yang Diunggah", use_container_width=True)
 
     with st.spinner("🔍 Menganalisis gambar..."):
-        color_div = get_color_diversity(image)
-        brightness = get_brightness(image)
-        saturation = get_saturation(image)
-        edge_complex = get_edge_complexity(image)
-        whitespace = get_whitespace_ratio(image)
-        text_content, avg_text_area, text_density = extract_text_ocr_space(image)
-        insights = generate_insight(color_div, edge_complex)
+        additional = additional_metrics(image)
+        ocr_text = extract_text_ocr_space(image)
+        insights = extract_text_insights(ocr_text)
 
-    # --- Tampilkan hasil ---
-    st.markdown("### Feature Analysis")
-    st.markdown(f"**Color Diversity:** {color_div}  ")
-    st.caption("Measures the variety of colors in the image. Higher values indicate a more diverse color palette.")
+    st.subheader("📈 Analisis Visual Tambahan")
+    for key, value in additional.items():
+        st.write(f"**{key}:** {value}")
 
-    st.markdown(f"**Avg Text Area:** {avg_text_area}  ")
-    st.caption("Represents the average size of text regions detected in the image. Larger values suggest bigger text areas.")
+    st.subheader("📝 Teks & Insight dari Gambar")
+    if ocr_text.strip():
+        for line in insights:
+            if "✅" in line:
+                st.success(line)
+            else:
+                st.info(line)
+    else:
+        st.warning("Tidak ada teks terdeteksi.")
 
-    st.markdown(f"**Text Density:** {text_density}  ")
-    st.caption("Indicates the proportion of text regions relative to the total image area. Higher values suggest text-heavy images.")
-
-    st.markdown(f"**Whitespace Ratio:** {whitespace}  ")
-    st.caption("Measures the proportion of white or blank space in the image. Higher values indicate more whitespace.")
-
-    st.markdown(f"**Edge Complexity:** {edge_complex}  ")
-    st.caption("Quantifies the density of edges in the image, representing visual complexity.")
-
-    st.markdown(f"**Brightness:** {brightness}  ")
-    st.caption("Represents the average brightness level of the image. Higher values indicate brighter images.")
-
-    st.markdown(f"**Saturation:** {saturation}  ")
-    st.caption("Measures the intensity of colors in the image. Higher values suggest more vibrant and saturated colors.")
-
-    st.markdown("### Key Insights")
-    for line in insights:
-        if "✅" in line:
-            st.success(line)
-        else:
-            st.info(line)
