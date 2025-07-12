@@ -9,6 +9,9 @@ st.set_page_config(page_title="Analisa Gambar Sosmed", layout="centered")
 
 # MASUKKAN API KEY KAMU DI SINI 👇
 OCR_API_KEY = "K85290270188957"
+simplicity = calculate_simplicity(image, text_content)
+        engagement = estimate_engagement(cta_found, contrast, dominant_color)
+        complexity = calculate_complexity(image)
 
 st.title("📊 Analisa Gambar untuk Postingan Sosial Media")
 
@@ -54,6 +57,31 @@ def check_cta(text):
     found = [word for word in cta_keywords if word in text.lower()]
     return found
 
+def calculate_simplicity(img, text):
+    small_img = img.resize((50, 50))
+    pixels = np.array(small_img).reshape(-1, 3)
+    unique_colors = np.unique(pixels, axis=0).shape[0]
+    color_score = 1 - min(unique_colors / 256, 1)  # makin banyak warna, makin kompleks
+    text_score = 1 - min(len(text) / 200, 1)       # makin panjang teks, makin kompleks
+    return round((color_score + text_score) / 2, 2)  # rata-rata
+
+def estimate_engagement(cta_found, contrast, dominant_color):
+    score = 0
+    if cta_found:
+        score += 1
+    if contrast > 30:
+        score += 1
+    if dominant_color[0] > 150:  # warna dominan merah
+        score += 1
+    return round(score / 3, 2)
+
+def calculate_complexity(img):
+    gray = img.convert("L")
+    histogram = gray.histogram()
+    histogram = np.array(histogram) / sum(histogram)
+    entropy = -np.sum(histogram * np.log2(histogram + 1e-6))
+    return round(entropy / 8, 2)  # skala 0–1
+
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Gambar yang diunggah", use_container_width=True)
@@ -69,11 +97,21 @@ if uploaded_file:
         st.markdown(f"**Teks Terdeteksi**: {text_content[:100]}{'...' if len(text_content) > 100 else ''}")
         st.markdown(f"**CTA Ditemukan**: {', '.join(cta_found) if cta_found else '❌ Tidak ditemukan'}")
         st.markdown(f"**Warna Dominan**: RGB {tuple(dominant_color)}")
+        st.subheader("📊 Skor Visual Lanjutan")
+        st.markdown(f"**Simplicity**: {simplicity} (1 = sangat sederhana)")
+        st.markdown(f"**Complexity**: {complexity} (1 = sangat kompleks)")
+        st.markdown(f"**Prediksi Engagement**: {engagement} (0–1)")
 
         st.subheader("🧠 Rekomendasi")
+        
         if contrast < 20:
             st.warning("Tingkat kontras rendah. Tingkatkan keterbacaan teks.")
         if not cta_found:
             st.info("Tidak ditemukan CTA. Tambahkan ajakan seperti 'Klik Sekarang', 'Beli', atau 'Scan'.")
         else:
             st.success("CTA ditemukan. Bagus!")
+
+        if simplicity < 0.4:
+            st.info("Desain cukup kompleks. Pertimbangkan menyederhanakan elemen visual.")
+        if engagement > 0.7:
+            st.success("Gambar ini berpotensi mendapat engagement tinggi.")
