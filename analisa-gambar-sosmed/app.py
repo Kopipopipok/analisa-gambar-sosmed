@@ -118,4 +118,7 @@ if uploaded_file:
 
     st.markdown("### Key Insights")
     for line in insights:
-        st.success(line) if "✅" in line else st.info(line)
+        if "✅" in line:
+            st.success(line)
+        else:
+            st.info(line)
