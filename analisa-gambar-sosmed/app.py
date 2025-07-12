@@ -94,6 +94,15 @@ if uploaded_file:
         st.markdown(f"**Teks Terdeteksi**: {text_content[:100]}{'...' if len(text_content) > 100 else ''}")
         st.markdown(f"**CTA Ditemukan**: {', '.join(cta_found) if cta_found else '❌ Tidak ditemukan'}")
         st.markdown(f"**Warna Dominan**: RGB {tuple(dominant_color)}")
+        st.subheader("📊 Skor Visual Lanjutan")
+        st.markdown(f"**Simplicity**: {simplicity} (1 = sangat sederhana)")
+        st.markdown(f"**Complexity**: {complexity} (1 = sangat kompleks)")
+        st.markdown(f"**Prediksi Engagement**: {engagement} (0–1)")
+
+        if simplicity < 0.4:
+            st.info("Desain cukup kompleks. Pertimbangkan menyederhanakan elemen visual.")
+        if engagement > 0.7:
+            st.success("Gambar ini berpotensi mendapat engagement tinggi.")
 
         st.subheader("🧠 Rekomendasi")
         
@@ -107,12 +116,4 @@ if uploaded_file:
         engagement = estimate_engagement(cta_found, contrast, dominant_color)
         complexity = calculate_complexity(image)
 
-        st.subheader("📊 Skor Visual Lanjutan")
-        st.markdown(f"**Simplicity**: {simplicity} (1 = sangat sederhana)")
-        st.markdown(f"**Complexity**: {complexity} (1 = sangat kompleks)")
-        st.markdown(f"**Prediksi Engagement**: {engagement} (0–1)")
-
-        if simplicity < 0.4:
-            st.info("Desain cukup kompleks. Pertimbangkan menyederhanakan elemen visual.")
-        if engagement > 0.7:
-            st.success("Gambar ini berpotensi mendapat engagement tinggi.")
+        
