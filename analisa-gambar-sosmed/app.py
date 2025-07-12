@@ -71,9 +71,9 @@ def extract_text_ocr_space(image):
 
 def generate_insight(color_div, edge_complex):
     insights = []
-    if color_div > 0.7:
+    if color_div > 0.9:
         insights.append("✅ This image has great color diversity")
-    if edge_complex > 7:
+    if edge_complex < 9.0:
         insights.append("✅ High visual detail and edge complexity")
     if not insights:
         insights.append("ℹ️ Consider using more color variation and sharpness")
