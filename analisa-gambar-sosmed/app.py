@@ -1,30 +1,52 @@
 import streamlit as st
 from PIL import Image, ImageStat
-import pytesseract
 import numpy as np
+import requests
+import base64
 
 st.set_page_config(page_title="Analisa Gambar Sosmed", layout="centered")
+
+# MASUKKAN API KEY KAMU DI SINI 👇
+OCR_API_KEY = "K85290270188957"
 
 st.title("📊 Analisa Gambar untuk Postingan Sosial Media")
 
 uploaded_file = st.file_uploader("Unggah gambar postingan (JPEG/PNG)", type=["jpg", "jpeg", "png"])
 
 def get_dominant_color(img):
-    img = img.resize((100, 100))  # resize for faster processing
+    img = img.resize((100, 100))
     pixels = np.array(img).reshape(-1, 3)
     unique, counts = np.unique(pixels, axis=0, return_counts=True)
     dominant = unique[np.argmax(counts)]
     return dominant
 
 def get_contrast_score(img):
-    gray_img = img.convert("L")  # convert to grayscale
+    gray_img = img.convert("L")
     stat = ImageStat.Stat(gray_img)
     contrast = stat.stddev[0]
     return contrast
 
-def extract_text(img):
-    text = pytesseract.image_to_string(img)
-    return text
+def extract_text_ocr_space(image: Image.Image) -> str:
+    buffered = st.BytesIO()
+    image.save(buffered, format="JPEG")
+    img_base64 = base64.b64encode(buffered.getvalue()).decode()
+
+    url = "https://api.ocr.space/parse/image"
+    headers = {
+        'apikey': OCR_API_KEY,
+    }
+    data = {
+        'base64Image': f'data:image/jpeg;base64,{img_base64}',
+        'language': 'ind',
+        'isOverlayRequired': False,
+    }
+    response = requests.post(url, data=data, headers=headers)
+    result = response.json()
+
+    try:
+        return result['ParsedResults'][0]['ParsedText']
+    except:
+        return ""
 
 def check_cta(text):
     cta_keywords = ["beli", "klik", "scan", "pesan", "hubungi", "diskon", "gratis"]
@@ -38,7 +60,7 @@ if uploaded_file:
     with st.spinner("🔍 Menganalisis gambar..."):
         dominant_color = get_dominant_color(image)
         contrast = get_contrast_score(image)
-        text_content = extract_text(image)
+        text_content = extract_text_ocr_space(image)
         cta_found = check_cta(text_content)
 
         st.subheader("📋 Hasil Analisis")
