@@ -1,4 +1,7 @@
 streamlit
-pillow
 numpy
-pytesseract
+opencv-python-headless
+Pillow
+scikit-learn
+scikit-image
+requests
