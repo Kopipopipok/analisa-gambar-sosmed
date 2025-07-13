@@ -1,4 +1,10 @@
-import streamlit as st import numpy as np from PIL import Image import cv2 import requests from sklearn.cluster import KMeans from skimage.metrics import structural_similarity as ssim
+import streamlit as st
+import numpy as np from PIL
+import Image
+import cv2
+import requests from sklearn.cluster
+import KMeans from skimage.metrics
+import structural_similarity as ssim
 
 st.set_page_config(page_title="Gambar Sosmed Analyzer", layout="centered") st.title("📊 Gambar Sosial Media Analyzer")
 
