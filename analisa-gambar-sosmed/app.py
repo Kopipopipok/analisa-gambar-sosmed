@@ -59,9 +59,12 @@ def extract_text_ocr_space(img_pil):
 
     response = requests.post(
         "https://api.ocr.space/parse/image",
-        data={"apikey": OCR_API_KEY, "isOverlayRequired": True},
-        files={\"filename.jpg\": buffered},
-        data={\"apikey\": OCR_API_KEY, \"isOverlayRequired\": True, \"filetype\": \"JPG\"},
+        data={
+            "apikey": OCR_API_KEY,
+            "isOverlayRequired": True,
+            "filetype": "JPG"
+        },
+        files={"filename.jpg": buffered},
     )
 
     st.code(response.text, language='json')  # debug view
