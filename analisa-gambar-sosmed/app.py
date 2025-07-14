@@ -143,7 +143,12 @@ if uploaded_file:
 
     st.subheader("📊 Prediksi Engagement Rate")
     st.metric("Skor Engagement", f"{score}/5", help="Berdasarkan 5 faktor visual dan teks")
-    st.success(label) if score >= 4 else st.info(label) if score >= 2 else st.warning(label)
+    if score >= 4:
+        st.success(label)
+    elif score >= 2:
+        st.info(label)
+else:
+    st.warning(label)
 
     if recs:
         st.subheader("🛠️ Rekomendasi Perbaikan")
