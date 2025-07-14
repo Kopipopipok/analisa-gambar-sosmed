@@ -54,7 +54,7 @@ def extract_text_ocr_space(img_pil):
     buffered = cv2.imencode(".jpg", np.array(img_pil))[1].tobytes()
     response = requests.post(
         "https://api.ocr.space/parse/image",
-        data={"apikey": "helloworld"},
+        data={"apikey": "K85290270188957"},
         files={"filename": buffered},
     )
     try:
