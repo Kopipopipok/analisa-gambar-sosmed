@@ -1,6 +1,6 @@
 import streamlit as st
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import cv2
 import requests
 from sklearn.cluster import KMeans
@@ -10,6 +10,8 @@ st.set_page_config(page_title="Gambar Sosmed Analyzer", layout="centered")
 st.title("📊 Gambar Sosial Media Analyzer")
 
 uploaded_file = st.file_uploader("Unggah gambar", type=["png", "jpg", "jpeg"])
+
+OCR_API_KEY = "K85290270188957"  # Ganti dengan API key asli kamu dari ocr.space
 
 def additional_metrics(img_pil):
     analysis = {}
@@ -51,17 +53,35 @@ def additional_metrics(img_pil):
     return analysis, color_spectrum, luminance, object_count, symmetry_score
 
 def extract_text_ocr_space(img_pil):
-    buffered = cv2.imencode(".jpg", np.array(img_pil))[1].tobytes()
+    # Resize gambar agar tidak terlalu besar untuk API gratis
+    resized = img_pil.resize((800, int(img_pil.height * 800 / img_pil.width)))
+    buffered = cv2.imencode(".jpg", np.array(resized))[1].tobytes()
+
     response = requests.post(
         "https://api.ocr.space/parse/image",
-        data={"apikey": "K85290270188957"},
+        data={"apikey": OCR_API_KEY, "isOverlayRequired": True},
         files={"filename": buffered},
     )
-    try:
-        text = response.json()["ParsedResults"][0]["ParsedText"]
-        return text
-    except:
-        return ""
+
+    st.code(response.text, language='json')  # debug view
+
+    boxes = []
+    if response.status_code == 200:
+        try:
+            result = response.json()
+            parsed_text = result["ParsedResults"][0]["ParsedText"]
+            lines = result["ParsedResults"][0].get("TextOverlay", {}).get("Lines", [])
+            for line in lines:
+                for word in line.get("Words", []):
+                    box = word.get("Left"), word.get("Top"), word.get("Width"), word.get("Height")
+                    boxes.append(box)
+            return parsed_text, boxes
+        except Exception as e:
+            st.warning(f"Gagal parsing hasil OCR: {e}")
+            return "", []
+    else:
+        st.error(f"OCR API error: {response.status_code}")
+        return "", []
 
 def extract_text_insights(text):
     lines = text.split("\n")
@@ -122,7 +142,7 @@ if uploaded_file:
 
     with st.spinner("🔍 Menganalisis gambar..."):
         analysis, color_spectrum, luminance, object_count, symmetry = additional_metrics(image)
-        ocr_text = extract_text_ocr_space(image)
+        ocr_text, ocr_boxes = extract_text_ocr_space(image)
         insights, has_cta = extract_text_insights(ocr_text)
         score, label = predict_engagement(color_spectrum, luminance, object_count, symmetry, has_cta)
         recs = generate_recommendations(color_spectrum, luminance, object_count, symmetry, has_cta)
@@ -147,10 +167,20 @@ if uploaded_file:
         st.success(label)
     elif score >= 2:
         st.info(label)
-else:
-    st.warning(label)
+    else:
+        st.warning(label)
 
     if recs:
         st.subheader("🛠️ Rekomendasi Perbaikan")
         for r in recs:
             st.write("-", r)
+
+    if ocr_boxes:
+        st.subheader("🔲 Sorotan Teks pada Gambar")
+        draw_img = image.copy()
+        draw = ImageDraw.Draw(draw_img)
+        scale_x = draw_img.width / 800
+        scale_y = draw_img.height / (int(image.height * 800 / image.width))
+        for x, y, w, h in ocr_boxes:
+            draw.rectangle([x * scale_x, y * scale_y, (x + w) * scale_x, (y + h) * scale_y], outline="red", width=2)
+        st.image(draw_img, caption="Sorotan Area Teks", use_container_width=True)
